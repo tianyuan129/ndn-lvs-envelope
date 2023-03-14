@@ -11,8 +11,10 @@ import ndn.app_support.light_versec.compiler as cpl
 from tib.impl.tib_impl import TrustInfoBaseImpl
 from tib.impl.storage.mem_storage import MemoryStorage
 from tib.impl.storage.sqlite3_storage import Sqlite3Storage
+from tib.impl.storage.repov3_storage import RepoV3Storage
+from tib.impl.storage.assisted_mem_storage import AssistedMemoryStorage
 
-logging.basicConfig(format='[{asctime}]{levelname}:{message}',
+logging.basicConfig(format='[{asctime}][{module}]{levelname}:{message}',
                     datefmt='%Y-%m-%d %H:%M:%S',
                     level=logging.DEBUG,
                     style='{')
@@ -25,15 +27,18 @@ lvs_text = r'''
 #admin: #site/"admin"/admin/#KEY <= #root
 #root: #site/#KEY
 '''
-
+app = NDNApp()
 async def main():
     basedir = os.path.dirname(os.path.abspath(sys.argv[0]))
     tpm_path = os.path.join(basedir, 'privKeys')
     db_path = os.path.join(basedir, 'certStorage.db')
     os.makedirs(tpm_path, exist_ok=True)
 
-    Sqlite3Storage.initialize(db_path)
-    tib = TrustInfoBaseImpl(NDNApp(), Sqlite3Storage(db_path), TpmFile(tpm_path))
+    # Sqlite3Storage.initialize(db_path)
+    # repoStorage = RepoV3Storage(app, '/tianyuan', '/testrepo')
+    # tib = TrustInfoBaseImpl(app, repoStorage, TpmFile(tpm_path))
+    tib = TrustInfoBaseImpl(app, AssistedMemoryStorage(app), TpmFile(tpm_path))
+    # tib = TrustInfoBaseImpl(app, Sqlite3Storage(db_path), TpmFile(tpm_path))
     generated_keys = []
     
     # anchor
@@ -66,32 +71,13 @@ async def main():
     post_name = enc.Name.from_str('/lvs-test/article/bob/test/v=1')
     post_bytes = tib.sign_data(post_name, enc.MetaInfo(content_type=enc.ContentType.BLOB, freshness_period=3600000),
                                'Hello World!'.encode())
-    # from base64 import b64encode
-    # print(b64encode(post_bytes).decode('utf-8'))
     _, _, _, post_sig = enc.parse_data(post_bytes)
     authenticated = await tib.authenticate_data(post_name, post_sig)
     print(authenticated)
 
     # post
-    
-
     for key in generated_keys:
         tib.tpm.delete_key(key)
 
-    # admin_signer = tib.tpm.get_signer(admin_key_name, None)
-    
-    # annot_lvs_model = AnnotLvsModel(lvs_model)
-
-    # cert_names = []
-    # cert_names += ['/lvs-test/author/b/KEY/123/admin/v=1']
-    # cert_names += ['/lvs-test/author/b/KEY/123/admin2/v=1']
-    # cert_names += ['/lvs-test/author/x/KEY/123/admin2/v=2']
-    # for cert_name in cert_names:
-    #     annot_lvs_model.annotate(enc.Name.normalize(cert_name))
-    # data_name = enc.Name.normalize('/lvs-test/article/b/post1/v=1')
-    # # explore(tib._checker, data_name)
-    # print([enc.Name.to_str(cert_name) for cert_name in annot_lvs_model.locate_certs(data_name)])
-    # print(annot_lvs_model.encode())
-
 if __name__ == '__main__':
-    asyncio.run(main())
+    app.run_forever(after_start=main())

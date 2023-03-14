@@ -1,7 +1,7 @@
 import logging
 from typing import Optional, Coroutine, Any
 from Cryptodome.PublicKey import ECC, RSA
-from ndn.app import NDNApp, Validator, ValidationFailure, InterestTimeout, InterestNack
+from ndn.app import NDNApp, Validator
 
 from ndn.security.validator.digest_validator import union_checker
 from ndn.security.validator.known_key_validator import verify_hmac, verify_ecdsa, verify_rsa
@@ -47,6 +47,7 @@ class CascadeChecker:
         # Obtain public key
         cert_name = sig_ptrs.signature_info.key_locator.name
         logging.debug(f'Verifying {enc.Name.to_str(name)} <- {enc.Name.to_str(cert_name)} ...')
+        key_bits = None
         if cert_name == self.anchor_name:
             logging.debug('Use trust anchor.')
             key_bits = self.anchor_key
@@ -54,20 +55,6 @@ class CascadeChecker:
             packet = await self.storage.search(cert_name, param = None)
             if packet:
                 _, _, key_bits, _ = enc.parse_data(packet)
-                logging.debug('Use cached public key.')
-            else:
-                logging.debug('Cascade fetching public key ...')
-                # Try to fetch
-                try:
-                    _, _, key_bits = await self.app.express_interest(
-                        name=cert_name, must_be_fresh=True, can_be_prefix=False,
-                        validator=self.next_level)
-                except (ValidationFailure, InterestTimeout, InterestNack):
-                    logging.debug('Public key not valid.')
-                    return False
-                logging.debug('Public key fetched.')
-                if key_bits:
-                    await self.storage.save(cert_name, key_bits)
         # Validate signature
         if not key_bits:
             return False
