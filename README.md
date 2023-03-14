@@ -1,2 +1,2 @@
-# python-ndn-secutils
-Few abstractions for python-ndn security utlilities
+# Trust Information Base
+WIP
