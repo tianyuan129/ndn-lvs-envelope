@@ -1,6 +1,8 @@
 import logging
 from typing import Optional, Coroutine, Any
 from Cryptodome.PublicKey import ECC, RSA
+from datetime import datetime
+
 from ndn.app import NDNApp, Validator
 
 from ndn.security.validator.digest_validator import union_checker
@@ -8,6 +10,7 @@ from ndn.security.validator.known_key_validator import verify_hmac, verify_ecdsa
 from ndn.security.validator.cascade_validator import PublicKeyStorage
 import ndn.encoding as enc
 import ndn.app_support.light_versec.checker as chk
+import ndn.app_support.security_v2 as sv2
 
 from ...storage import Storage
 class CascadeChecker:
@@ -54,7 +57,21 @@ class CascadeChecker:
         else:
             packet = await self.storage.search(cert_name, param = None)
             if packet:
-                _, _, key_bits, _ = enc.parse_data(packet)
+                try:
+                    cert = sv2.parse_certificate(packet)
+                except:
+                    logging.debug(f'Cannot parse the received certificate, fails ...')
+                    return False
+                else:
+                    key_bits = cert.content
+                    not_before_str = bytes(cert.signature_info.validity_period.not_before).decode('utf-8')
+                    not_before_time = datetime.strptime(not_before_str, '%Y%m%dT%H%M%S')
+                    not_after_str = bytes(cert.signature_info.validity_period.not_after).decode('utf-8')
+                    not_after_time = datetime.strptime(not_after_str, '%Y%m%dT%H%M%S')
+                    now_time = datetime.utcnow()
+                    if not_before_time > now_time or not_after_time < now_time:
+                        logging.debug(f'Certificate validity period not started or already ended, fails ...')
+                        return False
         # Validate signature
         if not key_bits:
             return False

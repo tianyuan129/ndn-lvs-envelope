@@ -35,7 +35,7 @@ async def main():
     os.makedirs(tpm_path, exist_ok=True)
 
     # Sqlite3Storage.initialize(db_path)
-    # repoStorage = RepoV3Storage(app, '/tianyuan', '/testrepo')
+    repoStorage = RepoV3Storage(app, '/tianyuan', '/testrepo')
     # tib = TrustInfoBaseImpl(app, repoStorage, TpmFile(tpm_path))
     tib = TrustInfoBaseImpl(app, AssistedMemoryStorage(app), TpmFile(tpm_path))
     # tib = TrustInfoBaseImpl(app, Sqlite3Storage(db_path), TpmFile(tpm_path))
@@ -71,6 +71,8 @@ async def main():
     post_name = enc.Name.from_str('/lvs-test/article/bob/test/v=1')
     post_bytes = tib.sign_data(post_name, enc.MetaInfo(content_type=enc.ContentType.BLOB, freshness_period=3600000),
                                'Hello World!'.encode())
+    # from base64 import b64encode
+    # print(b64encode(post_bytes).decode('utf-8'))
     _, _, _, post_sig = enc.parse_data(post_bytes)
     authenticated = await tib.authenticate_data(post_name, post_sig)
     print(authenticated)
