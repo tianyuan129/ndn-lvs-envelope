@@ -8,11 +8,11 @@ import ndn.app_support.security_v2 as sv2
 import ndn.app_support.light_versec.checker as chk
 import ndn.app_support.light_versec.compiler as cpl
 
-from tib.impl.tib_impl import TrustInfoBaseImpl
-from tib.impl.storage.mem_storage import MemoryStorage
-from tib.impl.storage.sqlite3_storage import Sqlite3Storage
-from tib.impl.storage.repov3_storage import RepoV3Storage
-from tib.impl.storage.assisted_mem_storage import AssistedMemoryStorage
+from envelope.impl.tib_impl import TrustInfoBaseImpl
+from envelope.impl.storage.mem_storage import MemoryStorage
+from envelope.impl.storage.sqlite3_storage import Sqlite3Storage
+from envelope.impl.storage.repov3_storage import RepoV3Storage
+from envelope.impl.storage.assisted_mem_storage import AssistedMemoryStorage
 
 logging.basicConfig(format='[{asctime}][{module}]{levelname}:{message}',
                     datefmt='%Y-%m-%d %H:%M:%S',

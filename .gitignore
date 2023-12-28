@@ -122,3 +122,7 @@ checkpoint
 privKeys/
 *.db
 feature.py
+*-venv/
+bench.py
+bench_new.py
+repo.conf

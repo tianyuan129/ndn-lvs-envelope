@@ -1,4 +1,4 @@
-import logging
+import logging, time
 from typing import Dict, Optional, Any, Tuple
 from ndn.app import NDNApp, Validator
 from ndn.security.tpm import Tpm
@@ -36,12 +36,16 @@ class TrustInfoBaseImpl(TrustInfoBase):
     
     async def add_certificate(self, cert: enc.BinaryStr):
         cert_name = sv2.parse_certificate(cert).name
+        before = time.time()
         self.annot_model.annotate(cert_name)
+        logging.info(f"Annnotation Cost {(time.time() - before) * 1000} ms")
         await self.cert_storage.save(cert_name, cert)
 
     def sign_data(self, name: enc.NonStrictName, meta_info: enc.MetaInfo,
                         content: Optional[enc.BinaryStr] = None) -> Optional[enc.VarBinaryStr]:
+        before = time.time()
         key_locators = self.annot_model.locate_certs(enc.Name.normalize(name))
+        logging.info(f"Annotation Locating Cost {(time.time() - before) * 1000} ms")
         for key_locator in key_locators:
             try:
                 signer = self.tpm.get_signer(key_locator[:-2], key_locator)
