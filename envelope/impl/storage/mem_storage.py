@@ -3,13 +3,13 @@ from ndn.name_tree import NameTrie
 import ndn.encoding as enc
 import ndn.app_support.security_v2 as sv2
 
-from ...storage import Storage, Box, Filter
+from ...storage import IteratableStorage, Box, Filter
 
-class MemoryStorage(Storage):
+class MemoryStorage(IteratableStorage):
     def __init__(self):
         self.data = NameTrie()
 
-    async def search(self, name: enc.FormalName, param: enc.InterestParam):
+    async def search(self, name: enc.FormalName):
         """
         Search for the data packet that satisfying an Interest packet with name specified.
 
@@ -23,6 +23,13 @@ class MemoryStorage(Storage):
             logging.debug(f'Cache miss: {enc.Name.to_str(name)}')
             return None
 
+    async def iter(self, name: enc.FormalName):
+        try:
+            return [ item for item in next(self.data.itervalues(prefix=name))]
+        except KeyError:
+            logging.debug(f'Cache miss: {enc.Name.to_str(name)}')
+            return None
+        
     async def save(self, name: enc.FormalName, packet: enc.BinaryStr):
         """
         Save a Data packet with name into the memory storage.
@@ -33,22 +40,24 @@ class MemoryStorage(Storage):
         logging.debug(f'Cache save: {enc.Name.to_str(name)}')
         self.data[name] = bytes(packet)
 
-
 class MemoryBox(Box):
     def __init__(self):
-        self.data = NameTrie()
+        self.storage = MemoryStorage()
+    def isIteratable(self):
+        return isinstance(self.storage, IteratableStorage)
 
     async def get(self, prefix: enc.FormalName, filter: Filter):
         try:
-            candidates = self.data.itervalues(prefix=prefix, shallow=True)
-            next_cert = next(candidates)
-            while filter and not await filter(next_cert):
-                next_cert = next(candidates)
-            return next_cert
+            itervalues = await self.storage.iter(prefix)
+            if itervalues is not None:
+                for candidate in itervalues:
+                    if await filter(candidate):
+                        return candidate
+                    else: continue
         except KeyError:
             logging.debug(f'Cache miss: {enc.Name.to_str(prefix)}')
             return None
 
     async def put(self, name: enc.FormalName, packet: enc.BinaryStr):
         logging.debug(f'Cache save: {enc.Name.to_str(name)}')
-        self.data[name] = bytes(packet)
+        self.storage.save(name, packet)
