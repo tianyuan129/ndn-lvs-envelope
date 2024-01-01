@@ -20,13 +20,14 @@ class IteratableStorage(Storage):
 
 class Box(abc.ABC):
     @abc.abstractmethod
-    def isIteratable(self):
-        pass
-
-    @abc.abstractmethod
-    async def get(self, prefix: enc.FormalName, filter: Filter):
+    async def get(self, prefix: enc.FormalName):
         pass
 
     @abc.abstractmethod
     async def put(self, name: enc.FormalName, packet: enc.BinaryStr):
+        pass
+
+class SearchableBox(Box):
+    @abc.abstractmethod
+    async def search(self, prefix: enc.FormalName, filter: Filter):
         pass

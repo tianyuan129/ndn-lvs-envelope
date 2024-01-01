@@ -61,20 +61,19 @@ class Pipelines:
             logging.debug('Use trust anchor.')
             key_bits = self.anchor_key
         else:
+            packet = await self.storage.get(cert_name)
+            verified_packet = None
             # check vnames
             if cert_name in self.vnames:
-                logging.info(f"Getting {enc.Name.to_str(cert_name)} Cost {(time.time() - before) * 1000} ms")
-
-            before = time.time()
-            if cert_name in self.vnames:
                 logging.debug(f'Cached result, bypassing pipeline...')
-                packet = await self.storage.get(cert_name, filter = None)
-            else:
-                packet = await self.storage.get(cert_name, self._validator_wrapper)
-            logging.info(f"Getting {enc.Name.to_str(cert_name)} Cost {(time.time() - before) * 1000} ms")
-            if packet:
+                verified_packet = packet
+            elif packet:
+                next_level_name, _, _, next_level_sig_ptrs = enc.parse_data(packet)
+                if await self.next_level(next_level_name, next_level_sig_ptrs):
+                    verified_packet = packet
+            if verified_packet:
                 try:
-                    cert = sv2.parse_certificate(packet)
+                    cert = sv2.parse_certificate(verified_packet)
                 except:
                     logging.debug(f'Cannot parse the received certificate, fails ...')
                     return False
@@ -92,10 +91,7 @@ class Pipelines:
         # Validate signature
         if not key_bits:
             return False
-        before = time.time()
-        result = self._verify_sig(key_bits, sig_ptrs)
-        logging.info(f"Pure Crypto Cost {(time.time() - before) * 1000} ms")
-        return result
+        return self._verify_sig(key_bits, sig_ptrs)
         
 
     def __call__(self, name: enc.FormalName, sig_ptrs: enc.SignaturePtrs) -> Coroutine[Any, None, bool]:

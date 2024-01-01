@@ -30,43 +30,46 @@ async def main():
     tpm_path = os.path.join(basedir, 'privKeys')
     db_path = os.path.join(basedir, 'certStorage.db')
     os.makedirs(tpm_path, exist_ok=True)
-
-    envelope = EnvelopeImpl(app, Sqlite3Box(db_path, initialize=True), TpmFile(tpm_path))
+    envelope = EnvelopeImpl(app, TpmFile(tpm_path))
     generated_keys = []
     
     # anchor
     anchor_key_name, anchor_key_pub = envelope.tpm.generate_key(enc.Name.from_str("/lvs-test"))
     generated_keys.append(anchor_key_name)
     anchor_self_signer = envelope.tpm.get_signer(anchor_key_name, None)
-    _, anchor_bytes = sv2.self_sign(anchor_key_name, anchor_key_pub, anchor_self_signer)
+    anchor_cert_name, anchor_bytes = sv2.self_sign(anchor_key_name, anchor_key_pub, anchor_self_signer)
     chk.DEFAULT_USER_FNS.update(
         {'$eq_any': lambda c, args: any(x == c for x in args)}
     )
     await envelope.set(anchor_bytes, cpl.compile_lvs(lvs_text), chk.DEFAULT_USER_FNS)
-    envelope.index(anchor_bytes)
+    await envelope.default_box.put(anchor_cert_name, anchor_bytes)
+    # envelope.index(anchor_bytes)
 
     # admin
     admin_key_name, admin_key_pub = envelope.tpm.generate_key(enc.Name.from_str("/lvs-test/admin/alice"))
     generated_keys.append(admin_key_name)
     admin_cert_name = admin_key_name + [enc.Component.from_str("anchor"), enc.Component.from_version(timestamp())]
-    admin_cert_bytes = await envelope.sign_cert(admin_cert_name, enc.MetaInfo(content_type=enc.ContentType.KEY, freshness_period=3600000),
-                                          admin_key_pub, datetime.utcnow(), datetime.utcnow() + timedelta(days=10))
+    admin_cert_bytes = await envelope.async_sign_cert(admin_cert_name, enc.MetaInfo(content_type=enc.ContentType.KEY, freshness_period=3600000),
+                                          admin_key_pub, datetime.utcnow(), datetime.utcnow() + timedelta(days=10),
+                                          aggressive_search = True)
+    await envelope.default_box.put(admin_cert_name, admin_cert_bytes)
 
     # author
     author_key_name, author_key_pub = envelope.tpm.generate_key(enc.Name.from_str("/lvs-test/author/bob"))
     generated_keys.append(author_key_name)
     author_cert_name = author_key_name + [enc.Component.from_str("admin"), enc.Component.from_version(timestamp())]
-    author_cert_bytes = await envelope.sign_cert(author_cert_name, enc.MetaInfo(content_type=enc.ContentType.KEY, freshness_period=3600000),
-                                      author_key_pub, datetime.utcnow(), datetime.utcnow() + timedelta(days=10))
+    author_cert_bytes = envelope.sign_cert(author_cert_name, enc.MetaInfo(content_type=enc.ContentType.KEY, freshness_period=3600000),
+                                           author_key_pub, datetime.utcnow(), datetime.utcnow() + timedelta(days=10))
+    await envelope.default_box.put(author_cert_name, author_cert_bytes)
 
     post_name = enc.Name.from_str('/lvs-test/article/bob/test/v=1')
-    post_bytes = await envelope.sign_data(post_name, enc.MetaInfo(content_type=enc.ContentType.BLOB, freshness_period=3600000),
+    post_bytes = envelope.sign_data(post_name, enc.MetaInfo(content_type=enc.ContentType.BLOB, freshness_period=3600000),
                                     'Hello World!'.encode())
     # from base64 import b64encode
     # print(b64encode(post_bytes).decode('utf-8'))
-    # _, _, _, post_sig = enc.parse_data(post_bytes)
-    # authenticated = await tib.authenticate_data(post_name, post_sig)
-    # print(authenticated)
+    _, _, _, post_sig = enc.parse_data(post_bytes)
+    authenticated = await envelope.validate(post_name, post_sig)
+    print(authenticated)
 
     # post
     for key in generated_keys:
