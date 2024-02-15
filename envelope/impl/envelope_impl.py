@@ -1,5 +1,5 @@
-import logging, time, asyncio
-from typing import Dict, Optional, Any, Tuple
+import logging, time
+from typing import Dict, Optional, Tuple
 from ndn.app import NDNApp, Validator
 from ndn.security.tpm import Tpm
 import ndn.encoding as enc
@@ -111,11 +111,11 @@ class EnvelopeImpl(EnvelopeBase):
         return await self._async_sign(name, lambda signer: enc.make_data(name, meta_info, content, signer), **kwargs)
 
     def sign_interest(self, name: enc.NonStrictName, interest_param: enc.InterestParam, 
-                      app_param: Optional[enc.BinaryStr] = None) -> Optional[Tuple[enc.Name.FormalName, enc.VarBinaryStr]]:
+                      app_param: Optional[enc.BinaryStr] = None) -> Optional[Tuple[enc.VarBinaryStr, enc.Name.FormalName]]:
         return self._sign_local(name, lambda signer: enc.make_interest(name, interest_param, app_param, signer, need_final_name=True))
 
     async def async_sign_interest(self, name: enc.NonStrictName, interest_param: enc.InterestParam,
-                                  app_param: Optional[enc.BinaryStr] = None, **kwargs) -> Optional[Tuple[enc.Name.FormalName, enc.VarBinaryStr]]:
+                                  app_param: Optional[enc.BinaryStr] = None, **kwargs) -> Optional[Tuple[enc.VarBinaryStr, enc.Name.FormalName]]:
         return await self._async_sign(name, lambda signer: enc.make_interest(name, interest_param, app_param, signer, need_final_name=True), **kwargs)
     
     def _cert_finalizer(self, name, meta_info, pub_key, start_time, end_time, signer):
@@ -157,7 +157,10 @@ class EnvelopeImpl(EnvelopeBase):
                                                                                 start_time, end_time, signer), **kwargs)
 
     async def validate(self, name: enc.FormalName, sig_ptrs: enc.SignaturePtrs, externalBox: Box = None) -> bool:
-        box = externalBox if externalBox else self.default_box 
+        boxes = [self.default_box]
+        _externalBox = externalBox if externalBox else self.default_external_box
+        if _externalBox:
+            boxes.append(_externalBox)
         validator = make_validator2(chk.Checker(self.annot_model.model, self.annot_model.usr_func), 
-                                    self.app, self.trust_anchor, box)
+                                    self.app, self.trust_anchor, boxes)
         return await validator(name, sig_ptrs)

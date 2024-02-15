@@ -1,7 +1,6 @@
-import logging, time
+import logging
 from ndn.name_tree import NameTrie
 import ndn.encoding as enc
-import ndn.app_support.security_v2 as sv2
 
 from ...storage import SearchableBox, Filter
 
@@ -28,5 +27,5 @@ class MemoryBox(SearchableBox):
             logging.debug(f'Cache miss: {enc.Name.to_str(prefix)}')
             return None
 
-    async def put(self, name: enc.FormalName, packet: enc.BinaryStr):
+    def put(self, name: enc.FormalName, packet: enc.BinaryStr):
         self.data[name] = bytes(packet)

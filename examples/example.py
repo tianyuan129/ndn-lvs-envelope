@@ -9,7 +9,7 @@ import ndn.app_support.light_versec.checker as chk
 import ndn.app_support.light_versec.compiler as cpl
 
 from envelope.impl.envelope_impl import EnvelopeImpl
-from envelope.impl.storage import Sqlite3Box, RepoV3Box, MemoryBox
+from envelope.impl.storage import MemoryBox, ExpressToNetworkBox
 
 logging.basicConfig(format='[{asctime}][{module}]{levelname}:{message}',
                     datefmt='%Y-%m-%d %H:%M:%S',
@@ -32,6 +32,7 @@ async def main():
     os.makedirs(tpm_path, exist_ok=True)
     envelope = EnvelopeImpl(app, TpmFile(tpm_path))
     generated_keys = []
+    express = ExpressToNetworkBox(app)
     
     # anchor
     anchor_key_name, anchor_key_pub = envelope.tpm.generate_key(enc.Name.from_str("/lvs-test"))
@@ -42,8 +43,17 @@ async def main():
         {'$eq_any': lambda c, args: any(x == c for x in args)}
     )
     await envelope.set(anchor_bytes, cpl.compile_lvs(lvs_text), chk.DEFAULT_USER_FNS)
-    await envelope.default_box.put(anchor_cert_name, anchor_bytes)
-    # envelope.index(anchor_bytes)
+    envelope.index(anchor_bytes)
+    envelope.default_box.put(anchor_cert_name, anchor_bytes)
+    external_box = MemoryBox()
+    # # move
+    # async def moveTo(cert_bytes):
+    #     cert_name = sv2.parse_certificate(cert_bytes).name
+    #     print(enc.Name.to_str(cert_name))
+    #     express.put(cert_name, cert_bytes)
+    #     return False
+    # await envelope.default_box.search(enc.Name.from_str("/"), moveTo)
+    
 
     # admin
     admin_key_name, admin_key_pub = envelope.tpm.generate_key(enc.Name.from_str("/lvs-test/admin/alice"))
@@ -52,7 +62,7 @@ async def main():
     admin_cert_bytes = await envelope.async_sign_cert(admin_cert_name, enc.MetaInfo(content_type=enc.ContentType.KEY, freshness_period=3600000),
                                           admin_key_pub, datetime.utcnow(), datetime.utcnow() + timedelta(days=10),
                                           aggressive_search = True)
-    await envelope.default_box.put(admin_cert_name, admin_cert_bytes)
+    external_box.put(admin_cert_name, admin_cert_bytes)
 
     # author
     author_key_name, author_key_pub = envelope.tpm.generate_key(enc.Name.from_str("/lvs-test/author/bob"))
@@ -60,7 +70,7 @@ async def main():
     author_cert_name = author_key_name + [enc.Component.from_str("admin"), enc.Component.from_version(timestamp())]
     author_cert_bytes = envelope.sign_cert(author_cert_name, enc.MetaInfo(content_type=enc.ContentType.KEY, freshness_period=3600000),
                                            author_key_pub, datetime.utcnow(), datetime.utcnow() + timedelta(days=10))
-    await envelope.default_box.put(author_cert_name, author_cert_bytes)
+    external_box.put(author_cert_name, author_cert_bytes)
 
     post_name = enc.Name.from_str('/lvs-test/article/bob/test/v=1')
     post_bytes = envelope.sign_data(post_name, enc.MetaInfo(content_type=enc.ContentType.BLOB, freshness_period=3600000),
@@ -68,7 +78,7 @@ async def main():
     # from base64 import b64encode
     # print(b64encode(post_bytes).decode('utf-8'))
     _, _, _, post_sig = enc.parse_data(post_bytes)
-    authenticated = await envelope.validate(post_name, post_sig)
+    authenticated = await envelope.validate(post_name, post_sig, external_box)
     print(authenticated)
 
     # post

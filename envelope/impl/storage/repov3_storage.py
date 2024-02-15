@@ -1,7 +1,6 @@
-import os, logging
+import logging
 import asyncio as aio
 from typing import Optional
-from hashlib import sha256
 
 import ndn.encoding as enc
 from ndn.app import NDNApp
@@ -9,13 +8,12 @@ from ndn.types import InterestNack, InterestTimeout
 from ndn.utils import gen_nonce
 
 from ndn_python_repo.clients.command_checker import CommandChecker
-from ndn_python_repo.command.repo_commands import RepoCommandParameter, ForwardingHint,\
-                                                  RegisterPrefix, CheckPrefix
+from ndn_python_repo.command.repo_commands import RepoCommandParameter, ForwardingHint, CheckPrefix
 from ndn_python_repo.utils import PubSub
 
-from ...storage import Storage, Box, Filter
+from .express_to_network import ExpressToNetworkBox
 
-class RepoV3Storage(Storage):
+class RepoV3Client:
     def __init__(self, app: NDNApp, prefix: enc.NonStrictName, repo_name: enc.NonStrictName,
                  forwarding_hint: Optional[enc.NonStrictName] = None):
         self.app = app
@@ -59,8 +57,6 @@ class RepoV3Storage(Storage):
         cmd_param.forwarding_hint.name = self.forwarding_hint
         process_id = gen_nonce()
         cmd_param.process_id = process_id.to_bytes(4, 'big')
-        # cmd_param.register_prefix = RegisterPrefix()
-        # cmd_param.register_prefix.name = data_name
         if check_prefix == None:
             check_prefix = self.prefix
         cmd_param.check_prefix = CheckPrefix()
@@ -101,7 +97,7 @@ class RepoV3Storage(Storage):
                                     response.insert_num))
             return response.insert_num
 
-    async def search(self, name: enc.FormalName, param: enc.InterestParam):
+    async def express(self, name: enc.FormalName, param: enc.InterestParam):
         trial_times = 0
         while True:
             trial_times += 1
@@ -110,7 +106,7 @@ class RepoV3Storage(Storage):
             try:
                 logging.info('Express Interest: {}'.format(enc.Name.to_str(name)))
                 data_name, _, _, data_bytes = await self.app.express_interest(
-                    name, need_raw_packet=True, can_be_prefix=False, lifetime=1000)
+                    name, param, need_raw_packet=True)
                 # Save data and update final_id
                 logging.info('Received data: {}'.format(enc.Name.to_str(data_name)))
                 return data_bytes
@@ -119,38 +115,14 @@ class RepoV3Storage(Storage):
             except InterestTimeout:
                 logging.info(f'Timeout')
 
-    async def save(self, name: enc.FormalName, packet: enc.BinaryStr):
-        await self.insert_data(name, packet)
-
-class RepoV3Box(Box):
+class RepoV3Box(ExpressToNetworkBox):
     def __init__(self, app: NDNApp, prefix: enc.NonStrictName, repo_name: enc.NonStrictName,
                  forwarding_hint: Optional[enc.NonStrictName] = None):
-        self.storage = RepoV3Storage(app, prefix, repo_name, forwarding_hint)
-
-    def isIteratable(self):
-        return isinstance(self.storage, IteratableStorage)
-    
-    async def _get_runner(self, name):
-        trial_times = 0
-        while True:
-            trial_times += 1
-            if trial_times > 3:
-                break
-            try:
-                logging.info('Express Interest: {}'.format(enc.Name.to_str(name)))
-                data_name, _, _, data_bytes = await self.storage.app.express_interest(
-                    name, need_raw_packet=True, can_be_prefix=True, lifetime=1000,
-                    forwarding_hint = [self.storage.repo_name])
-                # Save data and update final_id
-                logging.info('Received data: {}'.format(enc.Name.to_str(data_name)))
-                return data_bytes
-            except InterestNack as e:
-                logging.info(f'Nacked with reason={e.reason}')
-            except InterestTimeout:
-                logging.info(f'Timeout')
-    async def get(self, prefix: enc.FormalName, filter: Filter):
-        packet = await self._get_runner(prefix)
-        return packet if await filter(packet) else None
-
+        self.repo_client = RepoV3Client(app, prefix, repo_name, forwarding_hint)
+    async def get(self, name: enc.FormalName, **kwargs):
+        await super().get(name, forwarding_hints = [self.repo_client.repo_name], **kwargs)
     async def put(self, name: enc.FormalName, packet: enc.BinaryStr):
-        await self.storage.insert_data(name, packet)
+        """
+        put() is not covered by envelope
+        """
+        await self.repo_client.insert_data(name, packet)

@@ -15,12 +15,11 @@ from ...storage import Box
 class Pipelines:
     app: NDNApp
     next_level: Validator
-    storage: Box
+    boxes: List[Box]
     anchor_key: bytes
     anchor_name: enc.FormalName
     vnames: List[enc.FormalName]
 
-        
     @staticmethod
     def _verify_sig(pub_key_bits, sig_ptrs) -> bool:
         if sig_ptrs.signature_info.signature_type == enc.SignatureType.HMAC_WITH_SHA256:
@@ -34,20 +33,16 @@ class Pipelines:
         else:
             return False
 
-    def __init__(self, app: NDNApp, trust_anchor: enc.BinaryStr, storage: Box):
+    def __init__(self, app: NDNApp, trust_anchor: enc.BinaryStr, boxes: List[Box]):
         self.app = app
         self.next_level = self
-        self.storage = storage
+        self.boxes = boxes
         cert_name, _, key_bits, sig_ptrs = enc.parse_data(trust_anchor)
         self.anchor_name = [bytes(c) for c in cert_name]  # Copy the name in case
         self.anchor_key = bytes(key_bits)
         self.vnames = [cert_name]
         if not self._verify_sig(self.anchor_key, sig_ptrs):
             raise ValueError('Trust anchor is not properly self-signed')
-
-    async def _validator_wrapper(self, cert):
-        name, _, _, sig_ptrs = enc.parse_data(cert)
-        return await self.next_level(name, sig_ptrs)
 
     async def validate(self, name: enc.FormalName, sig_ptrs: enc.SignaturePtrs) -> bool:
         if (not sig_ptrs.signature_info or not sig_ptrs.signature_info.key_locator
@@ -61,8 +56,11 @@ class Pipelines:
             logging.debug('Use trust anchor.')
             key_bits = self.anchor_key
         else:
-            packet = await self.storage.get(cert_name)
+            packet = None
             verified_packet = None
+            for box in self.boxes:
+                packet = await box.get(cert_name)
+                if packet: break
             # check vnames
             if cert_name in self.vnames:
                 logging.debug(f'Cached result, bypassing pipeline...')
@@ -71,6 +69,7 @@ class Pipelines:
                 next_level_name, _, _, next_level_sig_ptrs = enc.parse_data(packet)
                 if await self.next_level(next_level_name, next_level_sig_ptrs):
                     verified_packet = packet
+                # verified_packet = packet
             if verified_packet:
                 try:
                     cert = sv2.parse_certificate(verified_packet)
@@ -93,12 +92,11 @@ class Pipelines:
             return False
         return self._verify_sig(key_bits, sig_ptrs)
         
-
     def __call__(self, name: enc.FormalName, sig_ptrs: enc.SignaturePtrs) -> Coroutine[Any, None, bool]:
         return self.validate(name, sig_ptrs)
 
 def make_validator2(checker: chk.Checker, app: NDNApp, trust_anchor: enc.BinaryStr,
-                    storage: Box) -> Validator:
+                    boxes: List[Box]) -> Validator:
     async def validate_name(name: enc.FormalName, sig_ptrs: enc.SignaturePtrs) -> bool:
         if (not sig_ptrs.signature_info or not sig_ptrs.signature_info.key_locator
                 or not sig_ptrs.signature_info.key_locator.name):
@@ -120,7 +118,7 @@ def make_validator2(checker: chk.Checker, app: NDNApp, trust_anchor: enc.BinaryS
             raise ValueError('Trust anchor does not match all roots of trust of LVS model')
 
     sanity_check()
-    cas_checker = Pipelines(app, trust_anchor, storage)
+    cas_checker = Pipelines(app, trust_anchor, boxes)
     ret = union_checker(validate_name, cas_checker)
     cas_checker.next_level = ret
     return ret

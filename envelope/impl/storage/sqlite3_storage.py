@@ -1,8 +1,7 @@
 import logging, os, sqlite3
 import ndn.encoding as enc
-from typing import List
 
-from ...storage import IteratableStorage, SearchableBox, Filter
+from ...storage import SearchableBox, Filter
 
 INITIALIZE_SQL = """
 CREATE TABLE IF NOT EXISTS
@@ -66,7 +65,7 @@ class Sqlite3Box(SearchableBox):
                     return entry_data
         return None
 
-    async def put(self, name: enc.FormalName, packet: enc.BinaryStr):
+    def put(self, name: enc.FormalName, packet: enc.BinaryStr):
         """
         Save a Data packet with name into the memory storage.
 
