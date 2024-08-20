@@ -1,4 +1,4 @@
-import os, sys, logging, asyncio
+import os, sys, logging
 from datetime import datetime, timedelta
 from ndn.app import NDNApp
 from ndn.security.tpm import TpmFile
