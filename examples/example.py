@@ -46,14 +46,6 @@ async def main():
     envelope.index(anchor_bytes)
     envelope.default_box.put(anchor_cert_name, anchor_bytes)
     external_box = MemoryBox()
-    # # move
-    # async def moveTo(cert_bytes):
-    #     cert_name = sv2.parse_certificate(cert_bytes).name
-    #     print(enc.Name.to_str(cert_name))
-    #     express.put(cert_name, cert_bytes)
-    #     return False
-    # await envelope.default_box.search(enc.Name.from_str("/"), moveTo)
-    
 
     # admin
     admin_key_name, admin_key_pub = envelope.tpm.generate_key(enc.Name.from_str("/lvs-test/admin/alice"))
@@ -75,8 +67,6 @@ async def main():
     post_name = enc.Name.from_str('/lvs-test/article/bob/test/v=1')
     post_bytes = envelope.sign_data(post_name, enc.MetaInfo(content_type=enc.ContentType.BLOB, freshness_period=3600000),
                                     'Hello World!'.encode())
-    # from base64 import b64encode
-    # print(b64encode(post_bytes).decode('utf-8'))
     _, _, _, post_sig = enc.parse_data(post_bytes)
     authenticated = await envelope.validate(post_name, post_sig, external_box)
     print(authenticated)

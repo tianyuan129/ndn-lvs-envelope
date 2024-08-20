@@ -1,14 +1,13 @@
 [tool.poetry]
 name = "envelope"
-version = "0.1.0"
-description = ""
+version = "0.1.1"
+description = "A New API for NDN Trust Schema"
 authors = ["Tianyuan Yu <tianyuan@cs.ucla.edu>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.10"
 python-ndn = "^0.4.1"
-ndn-python-repo = "^0.3"
 
 
 [build-system]
